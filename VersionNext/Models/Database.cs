@@ -1,6 +1,7 @@
 ﻿using Microsoft.Data.SqlClient;
 using System.Collections.Generic;
 using System.Linq;
+using VersionNext.Exceptions;
 
 namespace VersionNext.Models
 {
@@ -12,13 +13,21 @@ namespace VersionNext.Models
         public Database(SqlConnectionStringBuilder connectionString, IEnumerable<DatabaseVersion> versions)
         {
             ConnectionString = connectionString;
+            ValidateStartAndEndVersion(versions);
             Versions = versions.OrderBy(v => v.FullVersion);
         }
 
         public Database(string connectionString, IEnumerable<DatabaseVersion> versions)
         {
             ConnectionString = new SqlConnectionStringBuilder(connectionString);
+            ValidateStartAndEndVersion(versions);
             Versions = versions.OrderBy(v => v.FullVersion);
+        }
+
+        private void ValidateStartAndEndVersion(IEnumerable<DatabaseVersion> versions)
+        {
+            if (!(versions.First() is VersionStart && versions.Last() is VersionNext))
+                throw new MissingVersionException();
         }
     }
 }

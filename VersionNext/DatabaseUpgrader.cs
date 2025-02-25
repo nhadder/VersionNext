@@ -1,4 +1,5 @@
 ﻿using Microsoft.Data.SqlClient;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using VersionNext.Models;
@@ -30,18 +31,18 @@ namespace VersionNext
         /// <returns></returns>
         public async Task UpgradeAsync()
         {
-            var databaseVersions = _database.Versions;
+            var databaseVersions = _database.Versions.ToList();
             var currentVersion = await CurrentVersionAsync();
 
-            if (_settings.UpgradeVersionStart && databaseVersions.First().GetType() == typeof(VersionStart) && currentVersion.GetType() == typeof(VersionStart))
+            if (_settings.UpgradeVersionStart && databaseVersions.First() is VersionStart && currentVersion is VersionStart)
                 await SqlWrapper(string.Join("\n", databaseVersions.First().DatabaseUpdates.Select(u => u.GetCommandText())));
 
-            if (!_settings.UpgradeVersionNext && databaseVersions.Last().GetType() == typeof(Models.VersionNext))
-                databaseVersions.ToList().Remove(databaseVersions.Last());
+            if (!_settings.UpgradeVersionNext && databaseVersions.Last() is Models.VersionNext)
+                databaseVersions.Remove(databaseVersions.Last());
 
             if (UpgradeAvailable(currentVersion, databaseVersions))
             {
-                var versionSteps = _database.Versions.Skip(databaseVersions.ToList().IndexOf(currentVersion) + 1);
+                var versionSteps = databaseVersions.Skip(databaseVersions.IndexOf(currentVersion) + 1);
                 foreach(var version in versionSteps)
                     await UpgradeDatabaseAsync(version);
             }
@@ -61,12 +62,10 @@ namespace VersionNext
                 await connection.OpenAsync();
                 using (var command = connection.CreateCommand())
                 {
-                    command.CommandText = $"SELECT [FullVersion] FROM {_settings.VersionTableSchema}.{_settings.VersionTableName}";
-                    using (var reader = await command.ExecuteReaderAsync())
-                    {
-                        var dbVersion = reader.GetString(reader.GetOrdinal("FullVersion"));
-                        return _database.Versions.First(v => v.FullVersion.Equals(dbVersion));
-                    }
+                    command.CommandText = $"SELECT [FullVersion] FROM [{_settings.VersionTableSchema}].[{_settings.VersionTableName}]";
+                    command.CommandTimeout = _settings.SqlTimeoutSeconds;
+                    var dbVersion = (string)await command.ExecuteScalarAsync();
+                    return _database.Versions.First(v => v.FullVersion.Equals(dbVersion));
                 }
             }
         }
@@ -77,12 +76,11 @@ namespace VersionNext
             await SqlWrapper($@"
             IF NOT EXISTS (SELECT name FROM sys.databases WHERE name = '{_database.ConnectionString.InitialCatalog}')
             BEGIN
-                USE MASTER;
                 CREATE DATABASE {_database.ConnectionString.InitialCatalog};
-            END    
+            END", true, false);  
 
-            USE {_database.ConnectionString.InitialCatalog};
-            IF NOT EXISTS (SELECT * FROM sysobjects WHERE name = '{_settings.VersionTableName}' AND schema = '{_settings.VersionTableSchema}' xtype = 'U')
+            await SqlWrapper($@"
+            IF NOT EXISTS (SELECT * FROM sysobjects WHERE name = '{_settings.VersionTableName}' AND xtype = 'U')
             BEGIN
                 CREATE TABLE [{_settings.VersionTableSchema}].[{_settings.VersionTableName}] (
                     Major INT,
@@ -91,14 +89,14 @@ namespace VersionNext
                     FullVersion NVARCHAR(20)
                 );
 
-                INSERT INTO {_settings.VersionTableSchema}.{_settings.VersionTableName} (Major, Minor, Patch, FullVersion)
+                INSERT INTO [{_settings.VersionTableSchema}].[{_settings.VersionTableName}] (Major, Minor, Patch, FullVersion)
                 VALUES (0, 0, 0, '0.0.0');
             END");
         }
 
-        private bool UpgradeAvailable(DatabaseVersion currentVersion, IOrderedEnumerable<DatabaseVersion> versions)
+        private bool UpgradeAvailable(DatabaseVersion currentVersion, List<DatabaseVersion> versions)
         {
-            return currentVersion.IsNewer(versions.Last());
+            return currentVersion.HasNewer(versions.Last());
         }
 
         private async Task UpgradeDatabaseAsync(DatabaseVersion version)
@@ -107,31 +105,50 @@ namespace VersionNext
             await SqlWrapper($"UPDATE [{_settings.VersionTableSchema}].[{_settings.VersionTableName}] SET [Major] = {version.Major}, [Minor] = {version.Minor}, [Patch] = {version.Patch}, [FullVersion] = '{version.FullVersion}';");
         }
 
-        private async Task SqlWrapper(string commandText)
+        private async Task SqlWrapper(string commandText, bool useMaster = false, bool useTransaction = true)
         {
-            using (var connection = new SqlConnection(_database.ConnectionString.ToString()))
+            var connectionString = useMaster
+                ? new SqlConnectionStringBuilder(_database.ConnectionString.ToString()) { InitialCatalog = "master" }.ToString()
+                : _database.ConnectionString.ToString();
+
+            using (var connection = new SqlConnection(connectionString))
             {
                 await connection.OpenAsync();
-                using (var transaction = connection.BeginTransaction())
+                if (useTransaction)
                 {
-                    try
+                    using (var transaction = connection.BeginTransaction())
                     {
-                        using (var command = connection.CreateCommand())
+                        try
                         {
-                            command.CommandText = commandText;
-                            command.Transaction = transaction;
-                            command.CommandTimeout = _settings.SqlTimeoutSeconds;
-                            await command.ExecuteNonQueryAsync();
+                            using (var command = connection.CreateCommand())
+                            {
+                                command.CommandText = commandText;
+                                if (useTransaction)
+                                    command.Transaction = transaction;
+                                command.CommandTimeout = _settings.SqlTimeoutSeconds;
+                                await command.ExecuteNonQueryAsync();
+                            }
+                            transaction.Commit();
                         }
-                        transaction.Commit();
-                    }
-                    catch
-                    {
-                        transaction.Rollback();
-                        if (_settings.ThrowOnUpgradeFailure)
-                            throw;
+                        catch
+                        {
+                            transaction.Rollback();
+                            if (_settings.ThrowOnUpgradeFailure)
+                                throw;
+                        }
                     }
                 }
+                else
+                {
+                    using (var command = connection.CreateCommand())
+                    {
+                        command.CommandText = commandText;
+                        command.CommandTimeout = _settings.SqlTimeoutSeconds;
+                        await command.ExecuteNonQueryAsync();
+                    }
+                }
+
+                connection.Close();
             }
         }
         #endregion

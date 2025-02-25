@@ -1,6 +1,6 @@
 ﻿using Microsoft.Data.SqlClient;
 using VersionNext.Models;
-using VersionNext.Tests.Releases;
+using VersionNext.Tests.Versions;
 
 namespace VersionNext.Tests
 {
@@ -9,9 +9,12 @@ namespace VersionNext.Tests
     {
         private static SqlConnectionStringBuilder _connectionString = new SqlConnectionStringBuilder()
         {
-            DataSource = "localhost",
+            DataSource = "localhost,1433",
             InitialCatalog = "TEST_DB",
-            IntegratedSecurity = true
+            UserID = "sa",
+            Password = "YourStrong!Passw0rd",
+            IntegratedSecurity = false,
+            TrustServerCertificate = true
         };
 
         private static List<DatabaseVersion> _versions = new List<DatabaseVersion>()
@@ -36,28 +39,17 @@ namespace VersionNext.Tests
         [TestCleanup]
         public async Task TestCleanup()
         {
-            using (var connection = new SqlConnection(_testDatabase.ConnectionString.ToString()))
+            var connectionString = new SqlConnectionStringBuilder(_testDatabase.ConnectionString.ToString()) { InitialCatalog = "master" };
+            using (var connection = new SqlConnection(connectionString.ToString()))
             {
                 await connection.OpenAsync();
-                using (var transaction = connection.BeginTransaction())
+                using (var command = connection.CreateCommand())
                 {
-                    try
-                    {
-                        using (var command = connection.CreateCommand())
-                        {
-                            command.CommandText = $"DROP {_testDatabase.ConnectionString.InitialCatalog}";
-                            command.Transaction = transaction;
-                            command.CommandTimeout = _settings.SqlTimeoutSeconds;
-                            await command.ExecuteNonQueryAsync();
-                        }
-                        transaction.Commit();
-                    }
-                    catch
-                    {
-                        transaction.Rollback();
-                        if (_settings.ThrowOnUpgradeFailure)
-                            throw;
-                    }
+                    command.CommandText = $@"
+ALTER DATABASE [{_testDatabase.ConnectionString.InitialCatalog}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
+DROP DATABASE [{_testDatabase.ConnectionString.InitialCatalog}]";
+                    command.CommandTimeout = _settings.SqlTimeoutSeconds;
+                    await command.ExecuteNonQueryAsync();
                 }
             }
         }
@@ -70,13 +62,14 @@ namespace VersionNext.Tests
             ///Create database and upgrade to latest release version
             await upgrader.UpgradeAsync();
             var currentVersion = await upgrader.CurrentVersionAsync();
-            Assert.Equals(currentVersion.FullVersion, new v20250225().FullVersion);
+            Assert.AreEqual(new v20250225().FullVersion, currentVersion.FullVersion);
 
             //Upgrade to next unreleased/developer version
             _settings.UpgradeVersionNext = true;
+            _settings.UpgradeVersionStart = false;
             await upgrader.UpgradeAsync();
             currentVersion = await upgrader.CurrentVersionAsync();
-            Assert.Equals(currentVersion.FullVersion, new vDevelop().FullVersion);
+            Assert.AreEqual(new vDevelop().FullVersion, currentVersion.FullVersion);
         }
     }
 }

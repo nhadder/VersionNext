@@ -1,10 +1,7 @@
 ﻿namespace VersionNext.Models
 {
-    public class VersionNext : DatabaseVersion
+    public abstract class VersionNext : DatabaseVersion
     {
-        public VersionNext() : base(9999, 9999, 9999)
-        {
-
-        }
+        public VersionNext() : base(9999, 9999, 9999) { }
     }
 }
