@@ -33,12 +33,12 @@ namespace VersionNext.Models
             FullVersion = fullVersion;
         }
 
-        protected void AddSqlUpdate(string sql)
+        public void AddSqlUpdate(string sql)
         {
             DatabaseUpdates.Add(new RawSqlUpdate(sql));
         }
 
-        public bool IsNewer(DatabaseVersion other)
+        public bool HasNewer(DatabaseVersion other)
         {
             if (other.Major > Major)
                 return true;
