@@ -1,0 +1,1 @@
+C:\Nuget\nuget.exe pack VersionNext\VersionNext.nuspec

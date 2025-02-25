@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<package >
+  <metadata>
+    <id>VersionNext</id>
+    <version>1.0.0</version>
+    <title>Version Next</title>
+    <authors>Nick Hadder</authors>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <license type="expression">MIT</license>
+    <!-- <icon>icon.png</icon> -->
+    <projectUrl>https://github.com/nhadder/VersionNext</projectUrl>
+    <description>Manage Database Upgrades Easily</description>
+    <releaseNotes>Summary of changes made in this release of the package.</releaseNotes>
+    <copyright>$copyright$</copyright>
+    <tags>csharp database upgrade manager version next versionnext nhadder</tags>
+	<dependencies>
+		<group>
+			<dependency id="Microsoft.Data.SqlClient" version="5.2.2" />
+		</group>
+	</dependencies>
+  </metadata>
+</package>
