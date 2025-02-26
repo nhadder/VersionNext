@@ -2,7 +2,7 @@
 <package >
   <metadata>
     <id>VersionNext</id>
-    <version>1.0.0</version>
+    <version>1.0.1</version>
     <title>Version Next</title>
     <authors>Nick Hadder</authors>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
@@ -14,7 +14,10 @@
     <copyright>$copyright$</copyright>
     <tags>csharp database upgrade manager version next versionnext nhadder</tags>
 	<dependencies>
-		<group>
+		<group targetFramework="netstandard2.0">
+			<dependency id="Microsoft.Data.SqlClient" version="[5.1.3,5.2.2]" />
+		</group>
+		<group targetFramework="netstandard2.1">
 			<dependency id="Microsoft.Data.SqlClient" version="[5.1.3,5.2.2]" />
 		</group>
 	</dependencies>
